@@ -51,6 +51,7 @@
         //    // actually used.
         //    .lazy = false,
         //},
+        .ziglyph = .{ .url = "https://codeberg.org/dude_the_builder/ziglyph/archive/v0.13.1.tar.gz", .hash = "12207831bce7d4abce57b5a98e8f3635811cfefd160bca022eb91fe905d36a02cf25" },
     },
 
     // Specifies the set of files and directories that are included in this package.

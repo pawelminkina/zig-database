@@ -22,11 +22,8 @@ pub fn CreateDatabase(command: []const u8) !void {
         return;
     }
 
-    var databaseFileNameArray = std.ArrayList(u8).init(allocator);
-    defer databaseFileNameArray.deinit();
-    try databaseFileNameArray.appendSlice(databaseCreationValues);
-    try databaseFileNameArray.appendSlice(".zigdatabasefile");
-    const databaseFileName = databaseFileNameArray.items;
+    const databaseFileName = try ConcatStrings(databaseCreationValues, ".zigdatabasefile", allocator);
+    defer allocator.free(databaseFileName);
 
     const file = try dir.createFile(databaseFileName, .{ .read = true });
     defer file.close();
@@ -46,11 +43,14 @@ fn GetOrCreateDirectory(path: []const u8) !std.fs.Dir {
     return dir;
 }
 
-fn ConcatStrings(a: []const u8, b: []const u8, alloc: std.mem.Allocator) []const u8 {
+fn ConcatStrings(a: []const u8, b: []const u8, alloc: std.mem.Allocator) ![]const u8 {
     var string = std.ArrayList(u8).init(alloc);
-    defer string.deinit();
     try string.appendSlice(a);
     try string.appendSlice(b);
 
-    return alloc.dupe(u8, string.items);
+    const result = try alloc.dupe(u8, string.items);
+
+    string.deinit();
+
+    return result;
 }

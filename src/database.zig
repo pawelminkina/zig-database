@@ -25,10 +25,33 @@ pub fn CreateDatabase(command: []const u8) !void {
     const databaseFileName = try ConcatStrings(databaseCreationValues, ".zigdatabasefile", allocator);
     defer allocator.free(databaseFileName);
 
+    if (try isFileRWExist(dir, databaseFileName)) {
+        try stdout.print("Database with given name already exist, writing testing content", .{});
+        const instance = try GetDatabaseInstance(databaseFileName);
+        try stdout.print("\npath by db instance: {s}\n", .{instance.databaseFilePath});
+        try instance.JustTestingSavingMoreTextToDbFile();
+        return;
+    }
+
     const file = try dir.createFile(databaseFileName, .{ .read = true });
     defer file.close();
 
     try file.writeAll(databaseCreationValues);
+}
+
+pub fn GetDatabaseInstance(databaseName: []const u8) !*DatabaseInstance {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+
+    const workingDirectoryPath = try std.fs.getAppDataDir(allocator, "zigdatabase");
+
+    const String = []const u8;
+    const paths = [_]String{ workingDirectoryPath, databaseName };
+    const filePath = try std.fs.path.join(allocator, &paths);
+
+    //const path = try ConcatStrings(partPath, databaseName, allocator);
+
+    return DatabaseInstance.init(allocator, filePath);
 }
 
 fn GetOrCreateDirectory(path: []const u8) !std.fs.Dir {
@@ -54,3 +77,44 @@ fn ConcatStrings(a: []const u8, b: []const u8, alloc: std.mem.Allocator) ![]cons
 
     return result;
 }
+
+pub fn isFileRWExist(fn_dir: std.fs.Dir, fn_file_name: []const u8) !bool {
+    fn_dir.access(fn_file_name, .{ .mode = .read_write }) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        error.PermissionDenied => return false,
+        else => {
+            // (snip)
+            return err;
+        },
+    };
+
+    return true;
+}
+
+pub const DatabaseInstance = struct {
+    alloc: std.mem.Allocator,
+    databaseFilePath: []const u8,
+
+    pub fn init(alloc: std.mem.Allocator, filePath: []const u8) !*DatabaseInstance {
+        const instancePtr = try alloc.create(DatabaseInstance);
+        instancePtr.* = DatabaseInstance{
+            .alloc = alloc,
+            .databaseFilePath = filePath,
+        };
+        return instancePtr;
+    }
+
+    pub fn JustTestingSavingMoreTextToDbFile(self: *DatabaseInstance) !void {
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("/nFilepath: {s}/n", .{self.databaseFilePath});
+        const file = try std.fs.openFileAbsolute(self.databaseFilePath, .{ .mode = std.fs.File.OpenMode.read_write });
+        defer file.close();
+        const stat = try file.stat();
+        try file.seekTo(stat.size);
+
+        _ = try file.writer().write("just some random text here\n");
+    }
+    //    pub fn deinit(self: *DatabaseInstance) void {
+    //
+    //    }
+};

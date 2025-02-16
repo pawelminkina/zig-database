@@ -40,7 +40,13 @@ pub fn CreateDatabase(command: []const u8) !void {
     try file.writeAll(databaseCreationValues);
 }
 
-pub fn CreateTable(tableCreationDetails: TableCreationDetails) void {}
+pub fn CreateTable(command: []const u8) void {
+    var tableCreationDetails = TableCreationDetails.Create(command);
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+
+    const stdout = std.io.getStdOut().writer();
+}
 
 pub fn GetDatabaseInstance(databaseName: []const u8) !*DatabaseInstance {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -119,7 +125,15 @@ pub const DatabaseInstance = struct {
     }
 };
 
-pub const TableCreationDetails = struct { tableName: []const u8, columnDetails = []ColumnDetails };
+pub const TableCreationDetails = struct {
+    databaseName: []const u8,
+    tableName: []const u8,
+    columnDetails: []ColumnDetails,
+
+    pub fn Create(values: []const u8) TableCreationDetails {
+        //TODO somehow parse it
+    }
+};
 
 pub const ColumnDetails = struct { name: []const u8, type: ColumnType, typeSize: ?u8 };
 

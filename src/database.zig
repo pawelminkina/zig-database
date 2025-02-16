@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub const CREATE_DATABASE_COMMAND = "CREATE DATABASE";
+pub const CREATE_TABLE_COMMAND = "CREATE TABLE";
 
 pub fn CreateDatabase(command: []const u8) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -38,6 +39,8 @@ pub fn CreateDatabase(command: []const u8) !void {
 
     try file.writeAll(databaseCreationValues);
 }
+
+pub fn CreateTable(tableCreationDetails: TableCreationDetails) void {}
 
 pub fn GetDatabaseInstance(databaseName: []const u8) !*DatabaseInstance {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -114,7 +117,10 @@ pub const DatabaseInstance = struct {
 
         _ = try file.writer().write("just some random text here\n");
     }
-    //    pub fn deinit(self: *DatabaseInstance) void {
-    //
-    //    }
 };
+
+pub const TableCreationDetails = struct { tableName: []const u8, columnDetails = []ColumnDetails };
+
+pub const ColumnDetails = struct { name: []const u8, type: ColumnType, typeSize: ?u8 };
+
+pub const ColumnType = enum { bool, nchar, int };

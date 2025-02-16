@@ -58,9 +58,8 @@ pub fn main() !void {
     var norm = try Normalizer.init(allocator);
     defer norm.deinit();
 
-    const createDatabaseLen = database.CREATE_DATABASE_COMMAND.len;
-    if (fullCommand.len > createDatabaseLen) {
-        const isEql = try norm.eqlCaseless(allocator, fullCommand[0..createDatabaseLen], database.CREATE_DATABASE_COMMAND);
+    if (fullCommand.len > database.CREATE_DATABASE_COMMAND.len) {
+        const isEql = try norm.eqlCaseless(allocator, fullCommand[0..database.CREATE_DATABASE_COMMAND.len], database.CREATE_DATABASE_COMMAND);
         if (isEql) {
             try database.CreateDatabase(fullCommand);
         }

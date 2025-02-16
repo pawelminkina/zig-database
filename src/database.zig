@@ -1,7 +1,9 @@
 const std = @import("std");
+const managed = @import("managed.zig");
 
 pub const CREATE_DATABASE_COMMAND = "CREATE DATABASE";
 pub const CREATE_TABLE_COMMAND = "CREATE TABLE";
+pub const CONNECT_DATABASE = "CONNECT DATABASE";
 
 pub fn CreateDatabase(command: []const u8) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -26,39 +28,51 @@ pub fn CreateDatabase(command: []const u8) !void {
     const databaseFileName = try ConcatStrings(databaseCreationValues, ".zigdatabasefile", allocator);
     defer allocator.free(databaseFileName);
 
-    if (try isFileRWExist(dir, databaseFileName)) {
-        try stdout.print("Database with given name already exist, writing testing content", .{});
-        const instance = try GetDatabaseInstance(databaseFileName);
-        try stdout.print("\npath by db instance: {s}\n", .{instance.databaseFilePath});
-        try instance.JustTestingSavingMoreTextToDbFile();
-        return;
-    }
-
     const file = try dir.createFile(databaseFileName, .{ .read = true });
     defer file.close();
 
     try file.writeAll(databaseCreationValues);
 }
 
-pub fn CreateTable(command: []const u8) void {
-    var tableCreationDetails = TableCreationDetails.Create(command);
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-
+pub fn ConnectDatabase(command: []const u8) !void {
     const stdout = std.io.getStdOut().writer();
+    const dbName = std.mem.trim(u8, command[CONNECT_DATABASE.len..command.len], " ");
+
+    if (std.mem.containsAtLeast(u8, dbName, 1, " ")) {
+        try stdout.print("Given database name has space inside, TODO fail the command", .{});
+        return;
+    }
+
+    const optional_dbInstance = try GetDatabaseInstance(dbName);
+    if (optional_dbInstance) |dbInstance| {
+        try dbInstance.JustTestingSavingMoreTextToDbFile();
+        return;
+    }
+
+    try stdout.print("Db does not exist with name {s}", .{dbName});
+
+    //   while (true){
+    //       //this is my way to go, I'll recieve various commands here
+    //   }
 }
 
-pub fn GetDatabaseInstance(databaseName: []const u8) !*DatabaseInstance {
+pub fn GetDatabaseInstance(databaseName: []const u8) !?*DatabaseInstance {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
+    const databaseFileName = try ConcatStrings(databaseName, ".zigdatabasefile", allocator);
 
     const workingDirectoryPath = try std.fs.getAppDataDir(allocator, "zigdatabase");
+    const dir = try GetOrCreateDirectory(workingDirectoryPath);
 
     const String = []const u8;
-    const paths = [_]String{ workingDirectoryPath, databaseName };
+    const paths = [_]String{ workingDirectoryPath, databaseFileName };
     const filePath = try std.fs.path.join(allocator, &paths);
 
-    //const path = try ConcatStrings(partPath, databaseName, allocator);
+    const fileExist = try isFileRWExist(dir, databaseFileName);
+
+    if (fileExist == false) {
+        return null;
+    }
 
     return DatabaseInstance.init(allocator, filePath);
 }
@@ -121,17 +135,40 @@ pub const DatabaseInstance = struct {
         const stat = try file.stat();
         try file.seekTo(stat.size);
 
-        _ = try file.writer().write("just some random text here\n");
+        _ = try file.writer().write("\njust some random text here\n");
+    }
+
+    pub fn AddTable(self: *DatabaseInstance, command: []const u8) void {
+        const createdTable = Table.Create(command);
+
+        
+
+        //parse a file to object
+        //add my table to list of tables in that object and save
     }
 };
 
-pub const TableCreationDetails = struct {
-    databaseName: []const u8,
+pub const DatabaseObject = struct {
+    tables: []Table,
+
+    pub fn GetFromFile(filePath: []const u8){
+        const file = try std.fs.openFileAbsolute(self.databaseFilePath, .{ .mode = std.fs.File.OpenMode.read_write });
+        defer file.close();
+
+        //get parser from json and save json file, that's fucking it
+
+
+    }
+}
+
+pub const Table = struct {
     tableName: []const u8,
     columnDetails: []ColumnDetails,
 
-    pub fn Create(values: []const u8) TableCreationDetails {
-        //TODO somehow parse it
+    pub fn Create(values: []const u8) Table {
+        //what do we expect, what values?
+        //create table
+        //TODO somehow parse it, use fucking json for it
     }
 };
 

@@ -1,9 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const database = @import("database.zig");
+const inputHandler = @import("inputHandler.zig");
 
 const Normalizer = @import("ziglyph").Normalizer;
-const MAX_QUERY_LENGTH = 65536;
 
 pub fn main() !void {
     //What I actually want to achive? This is very good questions, let's make a list of things what I actually want to have in my code
@@ -26,42 +26,32 @@ pub fn main() !void {
     //text has ',' then just put it in "". If text contains "" put it in double """"
 
     //Now I need a code to read commands execute them and allow to read another command. Interesting
-    const stdin = std.io.getStdIn().reader();
-    const stdout = std.io.getStdOut().writer();
-
-    var lineBuf: [MAX_QUERY_LENGTH]u8 = undefined;
-
-    try stdout.print("Please enter a command: ", .{});
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var lines = std.ArrayList([]const u8).init(allocator);
-    defer lines.deinit();
-
-    if (try stdin.readUntilDelimiterOrEof(&lineBuf, '\n')) |line| { //try to catch and handle error when query length longer than possible
-        var command = line;
-        if (builtin.os.tag == .windows) {
-            // In Windows lines are terminated by \r\n.
-            // We need to strip out the \r
-            command = @constCast(std.mem.trimRight(u8, command, "\r"));
-        }
-
-        try lines.append(command);
-    }
-
-    const fullCommand = std.mem.join(allocator, " ", try lines.toOwnedSlice()) catch |err| {
-        return err;
-    };
-    defer allocator.free(fullCommand);
-
     var norm = try Normalizer.init(allocator);
     defer norm.deinit();
+
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print("Please enter a command: ", .{});
+
+    const fullCommand = try inputHandler.GetInput(allocator);
+    defer allocator.free(fullCommand);
+
+    try stdout.print("full command output {s}", .{fullCommand});
 
     if (fullCommand.len > database.CREATE_DATABASE_COMMAND.len) {
         const isEql = try norm.eqlCaseless(allocator, fullCommand[0..database.CREATE_DATABASE_COMMAND.len], database.CREATE_DATABASE_COMMAND);
         if (isEql) {
             try database.CreateDatabase(fullCommand);
+        }
+    }
+
+    if (fullCommand.len > database.CONNECT_DATABASE.len) {
+        const isEql = try norm.eqlCaseless(allocator, fullCommand[0..database.CONNECT_DATABASE.len], database.CONNECT_DATABASE);
+        if (isEql) {
+            try database.ConnectDatabase(fullCommand);
         }
     }
 

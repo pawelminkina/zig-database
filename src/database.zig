@@ -45,15 +45,12 @@ pub fn ConnectDatabase(command: []const u8) !void {
 
     const optional_dbInstance = try GetDatabaseInstance(dbName);
     if (optional_dbInstance) |dbInstance| {
+        //here while loop
         try dbInstance.JustTestingSavingMoreTextToDbFile();
         return;
     }
 
     try stdout.print("Db does not exist with name {s}", .{dbName});
-
-    //   while (true){
-    //       //this is my way to go, I'll recieve various commands here
-    //   }
 }
 
 pub fn GetDatabaseInstance(databaseName: []const u8) !?*DatabaseInstance {
@@ -141,37 +138,65 @@ pub const DatabaseInstance = struct {
     pub fn AddTable(self: *DatabaseInstance, command: []const u8) void {
         const createdTable = Table.Create(command);
 
-        
-
         //parse a file to object
         //add my table to list of tables in that object and save
     }
 };
 
-pub const DatabaseObject = struct {
-    tables: []Table,
-
-    pub fn GetFromFile(filePath: []const u8){
-        const file = try std.fs.openFileAbsolute(self.databaseFilePath, .{ .mode = std.fs.File.OpenMode.read_write });
-        defer file.close();
-
-        //get parser from json and save json file, that's fucking it
-
-
-    }
-}
-
 pub const Table = struct {
     tableName: []const u8,
     columnDetails: []ColumnDetails,
 
-    pub fn Create(values: []const u8) Table {
-        //what do we expect, what values?
-        //create table
-        //TODO somehow parse it, use fucking json for it
+    pub fn Create(values: []const u8) !Table {
+        //ok here I have command like "table_name (column datatype null, column datatype)"
+        //null if datatype is nullable
+        //I already removed "CREATE TABLE" from the start the name the moment I identified the type of command
+        const commandIterator = std.mem.splitSequence(u8, values, " ");
+        const tableName = commandIterator.next();
+        //TODO now, pass column details for creation
+
+        if (std.mem.eql(u8, commandIterator.next(), "(")) {
+            const stdout = std.io.getStdOut().writer();
+            try stdout.print("Given table name in command contains space", .{});
+        }
     }
 };
 
-pub const ColumnDetails = struct { name: []const u8, type: ColumnType, typeSize: ?u8 };
+pub const ColumnDetails = struct {
+    name: []const u8,
+    type: []const u8,
+    typeSize: ?u8,
+    nullable: bool,
 
-pub const ColumnType = enum { bool, nchar, int };
+    pub fn Create(values: []const u8) ?ColumnDetails {
+        //we're getting "column datatype null"
+        const iterator = std.mem.splitSequence(u8, values, " ");
+        const columnName = iterator.next();
+        var dataType = iterator.next();
+        const nullable = std.mem.eql(u8, iterator.next(), "null");
+        var typeSize: ?u8 = null;
+
+        const constainsTypeSizeIterator = std.mem.splitSequence(u8, dataType, "(");
+        const correctDataType = constainsTypeSizeIterator.next();
+        const potentialTypeSize = constainsTypeSizeIterator.next();
+        const containsTypeSize = std.mem.containsAtLeast(u8, potentialTypeSize, 1, ")");
+
+        if (containsTypeSize) {
+            typeSize = potentialTypeSize[0 .. potentialTypeSize.?.len - 1];
+            dataType = correctDataType;
+        }
+
+        if (!(std.mem.eql(u8, dataType, "bool") or std.mem.eql(u8, dataType, "varchar") or std.mem.eql(u8, dataType, "int"))) {
+            return null;
+        }
+
+        return ColumnDetails{
+            .name = columnName,
+            .nullable = nullable,
+            .typeSize = typeSize,
+            .type = dataType,
+        };
+
+        //syntax of datatype is
+    }
+};

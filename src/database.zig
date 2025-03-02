@@ -1,5 +1,6 @@
 const std = @import("std");
 const managed = @import("managed.zig");
+const inputHandler = @import("inputHandler.zig");
 
 pub const CREATE_DATABASE_COMMAND = "CREATE DATABASE";
 pub const CREATE_TABLE_COMMAND = "CREATE TABLE";
@@ -43,9 +44,25 @@ pub fn ConnectDatabase(command: []const u8) !void {
         return;
     }
 
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+
     const optional_dbInstance = try GetDatabaseInstance(dbName);
     if (optional_dbInstance) |dbInstance| {
-        //here while loop
+        while (true) {
+            const fullCommand = try inputHandler.GetInput(allocator);
+            defer allocator.free(fullCommand);
+
+            if (std.mem.eql(u8, fullCommand, "q")) {
+                break;
+            }
+
+            if (std.mem.containsAtLeast(u8, fullCommand, 1, "CREATE TABLE")) {
+                const trimmedCommand = std.mem.trimLeft(u8, fullCommand, "CREATE TABLE ");
+                optional_dbInstance.?.AddTable(trimmedCommand);
+            }
+        }
+
         try dbInstance.JustTestingSavingMoreTextToDbFile();
         return;
     }
@@ -138,7 +155,7 @@ pub const DatabaseInstance = struct {
     pub fn AddTable(self: *DatabaseInstance, command: []const u8) !void {
         _ = try Table.Create(self.alloc, command);
         const stdout = std.io.getStdOut().writer();
-        try stdout.print("Given table name in command contains space", .{});
+        try stdout.print("Creating table did not crash, so that's progress", .{});
 
         //parse a file to object
         //add my table to list of tables in that object and save

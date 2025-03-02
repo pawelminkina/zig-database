@@ -135,8 +135,10 @@ pub const DatabaseInstance = struct {
         _ = try file.writer().write("\njust some random text here\n");
     }
 
-    pub fn AddTable(self: *DatabaseInstance, command: []const u8) void {
-        const createdTable = Table.Create(command);
+    pub fn AddTable(self: *DatabaseInstance, command: []const u8) !void {
+        _ = try Table.Create(self.alloc, command);
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("Given table name in command contains space", .{});
 
         //parse a file to object
         //add my table to list of tables in that object and save
@@ -146,19 +148,33 @@ pub const DatabaseInstance = struct {
 pub const Table = struct {
     tableName: []const u8,
     columnDetails: []ColumnDetails,
+    alloc: std.mem.Allocator,
 
-    pub fn Create(values: []const u8) !Table {
+    //TODO, can do check so columns does not have spaces, commas, seperators etc.
+    pub fn Create(alloc: std.mem.Allocator, values: []const u8) !Table {
         //ok here I have command like "table_name (column datatype null, column datatype)"
         //null if datatype is nullable
         //I already removed "CREATE TABLE" from the start the name the moment I identified the type of command
         const commandIterator = std.mem.splitSequence(u8, values, " ");
         const tableName = commandIterator.next();
-        //TODO now, pass column details for creation
 
         if (std.mem.eql(u8, commandIterator.next(), "(")) {
             const stdout = std.io.getStdOut().writer();
             try stdout.print("Given table name in command contains space", .{});
         }
+
+        const columnsIterator = std.mem.splitSequence(u8, values, "(");
+        _ = columnsIterator.next();
+        const columnValues = std.mem.trimRight(u8, columnsIterator.next(), ")"); //this might fail as it's nullable
+        const truncatedColumns = columnValues[0 .. columnValues.?.len - 1];
+
+        const splittedColumns = std.mem.splitSequence(u8, truncatedColumns, ",");
+        const createdColumns = std.ArrayList(u8).init(alloc);
+        for (splittedColumns) |columnValue| {
+            createdColumns.append(ColumnDetails.Create(columnValue));
+        }
+
+        return Table{ .alloc = alloc, .columnDetails = createdColumns.toOwnedSlice(), .tableName = tableName };
     }
 };
 
@@ -170,7 +186,9 @@ pub const ColumnDetails = struct {
 
     pub fn Create(values: []const u8) ?ColumnDetails {
         //we're getting "column datatype null"
-        const iterator = std.mem.splitSequence(u8, values, " ");
+        var trimmedValues = std.mem.trimRight(u8, values, " ");
+        trimmedValues = std.mem.trimLeft(u8, trimmedValues, " ");
+        const iterator = std.mem.splitSequence(u8, trimmedValues, " ");
         const columnName = iterator.next();
         var dataType = iterator.next();
         const nullable = std.mem.eql(u8, iterator.next(), "null");

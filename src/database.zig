@@ -49,7 +49,10 @@ pub fn ConnectDatabase(command: []const u8) !void {
 
     const optional_dbInstance = try GetDatabaseInstance(dbName);
     if (optional_dbInstance) |dbInstance| {
+        try stdout.print("\ndb connected", .{});
+
         while (true) {
+            try stdout.print("\nput command: \n", .{});
             const fullCommand = try inputHandler.GetInput(allocator);
             defer allocator.free(fullCommand);
 
@@ -59,7 +62,7 @@ pub fn ConnectDatabase(command: []const u8) !void {
 
             if (std.mem.containsAtLeast(u8, fullCommand, 1, "CREATE TABLE")) {
                 const trimmedCommand = std.mem.trimLeft(u8, fullCommand, "CREATE TABLE ");
-                optional_dbInstance.?.AddTable(trimmedCommand);
+                try optional_dbInstance.?.AddTable(trimmedCommand);
             }
         }
 
@@ -172,26 +175,29 @@ pub const Table = struct {
         //ok here I have command like "table_name (column datatype null, column datatype)"
         //null if datatype is nullable
         //I already removed "CREATE TABLE" from the start the name the moment I identified the type of command
-        const commandIterator = std.mem.splitSequence(u8, values, " ");
+        var commandIterator = std.mem.splitSequence(u8, values, " ");
         const tableName = commandIterator.next();
 
-        if (std.mem.eql(u8, commandIterator.next(), "(")) {
+        if (!std.mem.eql(u8, commandIterator.next().?, "(")) {
             const stdout = std.io.getStdOut().writer();
             try stdout.print("Given table name in command contains space", .{});
+            //TODO error or something
         }
 
-        const columnsIterator = std.mem.splitSequence(u8, values, "(");
+        var columnsIterator = std.mem.splitSequence(u8, values, "(");
         _ = columnsIterator.next();
-        const columnValues = std.mem.trimRight(u8, columnsIterator.next(), ")"); //this might fail as it's nullable
-        const truncatedColumns = columnValues[0 .. columnValues.?.len - 1];
+        const columnValues = std.mem.trimRight(u8, columnsIterator.next().?, ")"); //this might fail as it's nullable
 
-        const splittedColumns = std.mem.splitSequence(u8, truncatedColumns, ",");
-        const createdColumns = std.ArrayList(u8).init(alloc);
-        for (splittedColumns) |columnValue| {
-            createdColumns.append(ColumnDetails.Create(columnValue));
+        var splittedColumns = std.mem.splitSequence(u8, columnValues, ",");
+        var createdColumns = std.ArrayList(ColumnDetails).init(alloc);
+        while (splittedColumns.next()) |columnValue| {
+            const column = ColumnDetails.Create(columnValue);
+            if (column != null) {
+                try createdColumns.append(column.?);
+            }
         }
 
-        return Table{ .alloc = alloc, .columnDetails = createdColumns.toOwnedSlice(), .tableName = tableName };
+        return Table{ .alloc = alloc, .columnDetails = try createdColumns.toOwnedSlice(), .tableName = tableName.? };
     }
 };
 
@@ -205,31 +211,32 @@ pub const ColumnDetails = struct {
         //we're getting "column datatype null"
         var trimmedValues = std.mem.trimRight(u8, values, " ");
         trimmedValues = std.mem.trimLeft(u8, trimmedValues, " ");
-        const iterator = std.mem.splitSequence(u8, trimmedValues, " ");
+        var iterator = std.mem.splitSequence(u8, trimmedValues, " ");
         const columnName = iterator.next();
         var dataType = iterator.next();
-        const nullable = std.mem.eql(u8, iterator.next(), "null");
+        const nullable = std.mem.eql(u8, iterator.next().?, "null");
         var typeSize: ?u8 = null;
 
-        const constainsTypeSizeIterator = std.mem.splitSequence(u8, dataType, "(");
+        var constainsTypeSizeIterator = std.mem.splitSequence(u8, dataType.?, "(");
         const correctDataType = constainsTypeSizeIterator.next();
         const potentialTypeSize = constainsTypeSizeIterator.next();
-        const containsTypeSize = std.mem.containsAtLeast(u8, potentialTypeSize, 1, ")");
+        const containsTypeSize = std.mem.containsAtLeast(u8, potentialTypeSize.?, 1, ")");
 
         if (containsTypeSize) {
-            typeSize = potentialTypeSize[0 .. potentialTypeSize.?.len - 1];
+            const typeSizeSlice = potentialTypeSize.?[0 .. potentialTypeSize.?.len - 1];
+            typeSize = std.fmt.parseInt(u8, typeSizeSlice, 10) catch unreachable;
             dataType = correctDataType;
         }
 
-        if (!(std.mem.eql(u8, dataType, "bool") or std.mem.eql(u8, dataType, "varchar") or std.mem.eql(u8, dataType, "int"))) {
+        if (!(std.mem.eql(u8, dataType.?, "bool") or std.mem.eql(u8, dataType.?, "varchar") or std.mem.eql(u8, dataType.?, "int"))) {
             return null;
         }
 
         return ColumnDetails{
-            .name = columnName,
+            .name = columnName.?,
             .nullable = nullable,
-            .typeSize = typeSize,
-            .type = dataType,
+            .typeSize = typeSize.?,
+            .type = dataType.?,
         };
 
         //syntax of datatype is

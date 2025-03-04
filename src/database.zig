@@ -47,7 +47,7 @@ pub fn ConnectDatabase(command: []const u8) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    const optional_dbInstance = try GetDatabaseInstance(dbName);
+    const optional_dbInstance = try GetDatabaseInstance(allocator, dbName);
     if (optional_dbInstance) |dbInstance| {
         try stdout.print("\ndb connected", .{});
 
@@ -73,17 +73,15 @@ pub fn ConnectDatabase(command: []const u8) !void {
     try stdout.print("Db does not exist with name {s}", .{dbName});
 }
 
-pub fn GetDatabaseInstance(databaseName: []const u8) !?*DatabaseInstance {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    const databaseFileName = try ConcatStrings(databaseName, ".zigdatabasefile", allocator);
+pub fn GetDatabaseInstance(alloc: std.mem.Allocator, databaseName: []const u8) !?*DatabaseInstance {
+    const databaseFileName = try ConcatStrings(databaseName, ".zigdatabasefile", alloc);
 
-    const workingDirectoryPath = try std.fs.getAppDataDir(allocator, "zigdatabase");
+    const workingDirectoryPath = try std.fs.getAppDataDir(alloc, "zigdatabase");
     const dir = try GetOrCreateDirectory(workingDirectoryPath);
 
     const String = []const u8;
     const paths = [_]String{ workingDirectoryPath, databaseFileName };
-    const filePath = try std.fs.path.join(allocator, &paths);
+    const filePath = try std.fs.path.join(alloc, &paths);
 
     const fileExist = try isFileRWExist(dir, databaseFileName);
 
@@ -91,7 +89,7 @@ pub fn GetDatabaseInstance(databaseName: []const u8) !?*DatabaseInstance {
         return null;
     }
 
-    return DatabaseInstance.init(allocator, filePath);
+    return DatabaseInstance.init(alloc, filePath);
 }
 
 fn GetOrCreateDirectory(path: []const u8) !std.fs.Dir {
@@ -160,8 +158,10 @@ pub const DatabaseInstance = struct {
         const stdout = std.io.getStdOut().writer();
         try stdout.print("Creating table did not crash, so that's progress", .{});
 
-        //parse a file to object
-        //add my table to list of tables in that object and save
+        const file = try std.fs.openFileAbsolute(self.databaseFilePath, .{ .mode = std.fs.File.OpenMode.read_write });
+        defer file.close();
+
+        //TODO here write my json schema of database, so basically get everything what there is if table exist fail if it doesn't add it
     }
 };
 
@@ -178,7 +178,7 @@ pub const Table = struct {
         var commandIterator = std.mem.splitSequence(u8, values, " ");
         const tableName = commandIterator.next();
 
-        if (!std.mem.eql(u8, commandIterator.next().?, "(")) {
+        if (!std.mem.containsAtLeast(u8, commandIterator.next().?, 1, "(")) {
             const stdout = std.io.getStdOut().writer();
             try stdout.print("Given table name in command contains space", .{});
             //TODO error or something
@@ -186,7 +186,7 @@ pub const Table = struct {
 
         var columnsIterator = std.mem.splitSequence(u8, values, "(");
         _ = columnsIterator.next();
-        const columnValues = std.mem.trimRight(u8, columnsIterator.next().?, ")"); //this might fail as it's nullable
+        const columnValues = std.mem.trimRight(u8, columnsIterator.next().?, ")");
 
         var splittedColumns = std.mem.splitSequence(u8, columnValues, ",");
         var createdColumns = std.ArrayList(ColumnDetails).init(alloc);
@@ -220,9 +220,8 @@ pub const ColumnDetails = struct {
         var constainsTypeSizeIterator = std.mem.splitSequence(u8, dataType.?, "(");
         const correctDataType = constainsTypeSizeIterator.next();
         const potentialTypeSize = constainsTypeSizeIterator.next();
-        const containsTypeSize = std.mem.containsAtLeast(u8, potentialTypeSize.?, 1, ")");
 
-        if (containsTypeSize) {
+        if (potentialTypeSize != null and std.mem.containsAtLeast(u8, potentialTypeSize.?, 1, ")")) {
             const typeSizeSlice = potentialTypeSize.?[0 .. potentialTypeSize.?.len - 1];
             typeSize = std.fmt.parseInt(u8, typeSizeSlice, 10) catch unreachable;
             dataType = correctDataType;
@@ -235,7 +234,7 @@ pub const ColumnDetails = struct {
         return ColumnDetails{
             .name = columnName.?,
             .nullable = nullable,
-            .typeSize = typeSize.?,
+            .typeSize = typeSize,
             .type = dataType.?,
         };
 

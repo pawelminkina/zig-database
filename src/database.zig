@@ -62,11 +62,10 @@ pub fn ConnectDatabase(command: []const u8) !void {
 
             if (std.mem.containsAtLeast(u8, fullCommand, 1, "CREATE TABLE")) {
                 const trimmedCommand = std.mem.trimLeft(u8, fullCommand, "CREATE TABLE ");
-                try optional_dbInstance.?.AddTable(trimmedCommand);
+                try dbInstance.AddTable(trimmedCommand);
             }
         }
 
-        try dbInstance.JustTestingSavingMoreTextToDbFile();
         return;
     }
 
@@ -149,21 +148,77 @@ pub const DatabaseInstance = struct {
         defer file.close();
         const stat = try file.stat();
         try file.seekTo(stat.size);
-
-        _ = try file.writer().write("\njust some random text here\n");
     }
 
     pub fn AddTable(self: *DatabaseInstance, command: []const u8) !void {
-        _ = try Table.Create(self.alloc, command);
+        const createdTable = try Table.Create(self.alloc, command);
         const stdout = std.io.getStdOut().writer();
         try stdout.print("Creating table did not crash, so that's progress", .{});
 
         const file = try std.fs.openFileAbsolute(self.databaseFilePath, .{ .mode = std.fs.File.OpenMode.read_write });
         defer file.close();
+        const fileContent = try file.readToEndAlloc(self.alloc, 4096);
 
-        //TODO here write my json schema of database, so basically get everything what there is if table exist fail if it doesn't add it
+        const parsedFile = try std.json.parseFromSlice(DatabaseSchemaDto, self.alloc, fileContent, .{ .allocate = .alloc_always }); //here it fails on parse
+        defer parsedFile.deinit();
+
+        // Check if a table with the same name already exists.
+        for (parsedFile.value.tables) |existingTable| {
+            if (std.mem.eql(u8, existingTable.name, createdTable.tableName)) {
+                try stdout.print("Cannot continue: table with name '{s}' already exists.\n", .{createdTable.tableName});
+                return;
+            }
+        }
+
+        // Convert createdTable.columnDetails (of type []ColumnDetails) to an array of ColumnSchemaDto.
+        var columnsList = std.ArrayList(ColumnSchemaDto).init(self.alloc);
+        for (createdTable.columnDetails) |col| {
+            const colSchema = ColumnSchemaDto{
+                .name = col.name,
+                .type = col.type,
+                .typeSize = col.typeSize,
+                .nullable = col.nullable,
+            };
+            try columnsList.append(colSchema);
+        }
+        const columnsSlice = try columnsList.toOwnedSlice(); //towonedslice calls deinit
+
+        // Create a new TableSchemaDto from createdTable.
+        const newTable = TableSchemaDto{
+            .name = createdTable.tableName,
+            .columns = columnsSlice,
+        };
+
+        // Create a new dynamic array for the tables (copying the existing ones)
+        var tableList = std.ArrayList(TableSchemaDto).init(self.alloc);
+        for (parsedFile.value.tables) |table| {
+            try tableList.append(table);
+        }
+        try tableList.append(newTable);
+
+        // Create a mutable copy of the parsed JSON structure.
+        var mutableSchema = parsedFile.value;
+
+        // Now update the tables field.
+        mutableSchema.tables = try tableList.toOwnedSlice();
+
+        var buf: [4096]u8 = undefined;
+        var fba = std.heap.FixedBufferAllocator.init(&buf);
+        var string = std.ArrayList(u8).init(fba.allocator());
+        try std.json.stringify(mutableSchema, .{}, string.writer());
+
+        const stat = try file.stat();
+        try file.seekTo(stat.size);
+
+        try file.writeAll(string.items);
     }
 };
+
+pub const DatabaseSchemaDto = struct { tables: []TableSchemaDto };
+
+pub const TableSchemaDto = struct { name: []const u8, columns: []ColumnSchemaDto };
+
+pub const ColumnSchemaDto = struct { name: []const u8, type: []const u8, typeSize: ?u8, nullable: bool };
 
 pub const Table = struct {
     tableName: []const u8,

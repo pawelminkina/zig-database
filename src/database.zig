@@ -285,7 +285,7 @@ pub const ColumnDetails = struct {
             dataType = correctDataType;
         }
 
-        if (!(std.mem.eql(u8, dataType.?, "bool") or std.mem.eql(u8, dataType.?, "varchar") or std.mem.eql(u8, dataType.?, "int"))) {
+        if (!(std.mem.eql(u8, dataType.?, "bool") or std.mem.eql(u8, dataType.?, "varchar") or std.mem.eql(u8, dataType.?, "int"))) { //a
             return null;
         }
 

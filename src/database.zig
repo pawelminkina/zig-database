@@ -7,32 +7,17 @@ pub const CREATE_TABLE_COMMAND = "CREATE TABLE";
 pub const CONNECT_DATABASE = "CONNECT DATABASE";
 
 pub fn CreateDatabase(command: []const u8) !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-
     const stdout = std.io.getStdOut().writer();
     const databaseCreationValues = std.mem.trim(u8, command[CREATE_DATABASE_COMMAND.len..command.len], " ");
-    try stdout.print("{s}\n", .{databaseCreationValues});
-
-    const workingDirectoryPath = try std.fs.getAppDataDir(allocator, "zigdatabase");
-    defer allocator.free(workingDirectoryPath);
-
-    try stdout.print("{s}\n", .{workingDirectoryPath});
-
-    const dir = try GetOrCreateDirectory(workingDirectoryPath);
 
     if (std.mem.containsAtLeast(u8, databaseCreationValues, 1, " ")) {
         try stdout.print("Given database name has space inside, TODO fail the command", .{});
         return;
     }
 
-    const databaseFileName = try ConcatStrings(databaseCreationValues, ".zigdatabasefile", allocator);
-    defer allocator.free(databaseFileName);
+    const databaseName = databaseCreationValues;
 
-    const file = try dir.createFile(databaseFileName, .{ .read = true });
-    defer file.close();
-
-    try file.writeAll(databaseCreationValues);
+    try DatabaseInstance.CreateDatabase(databaseName);
 }
 
 pub fn ConnectDatabase(command: []const u8) !void {
@@ -141,6 +126,24 @@ pub const DatabaseInstance = struct {
         return instancePtr;
     }
 
+    pub fn CreateDatabase(databaseName: []const u8) !void {
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        const allocator = gpa.allocator();
+
+        const databaseFileName = try ConcatStrings(databaseName, ".zigdatabasefile", allocator);
+        defer allocator.free(databaseFileName);
+
+        const workingDirectoryPath = try std.fs.getAppDataDir(allocator, "zigdatabase");
+        const dir = try GetOrCreateDirectory(workingDirectoryPath);
+
+        const file = try dir.createFile(databaseFileName, .{ .read = true });
+        defer file.close();
+        const db = DatabaseSchemaDto{ .name = databaseName, .tables = &[0]TableSchemaDto{} };
+
+        const json = try std.json.stringifyAlloc(allocator, db, .{});
+        try file.writeAll(json);
+    }
+
     pub fn JustTestingSavingMoreTextToDbFile(self: *DatabaseInstance) !void {
         const stdout = std.io.getStdOut().writer();
         try stdout.print("/nFilepath: {s}/n", .{self.databaseFilePath});
@@ -214,7 +217,7 @@ pub const DatabaseInstance = struct {
     }
 };
 
-pub const DatabaseSchemaDto = struct { tables: []TableSchemaDto };
+pub const DatabaseSchemaDto = struct { name: []const u8, tables: []TableSchemaDto };
 
 pub const TableSchemaDto = struct { name: []const u8, columns: []ColumnSchemaDto };
 
